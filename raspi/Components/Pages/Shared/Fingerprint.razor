@@ -1,0 +1,85 @@
+﻿@using raspi.Services
+@inject FingerprintService FingerprintService
+<MudDialog>
+    <DialogContent>
+        <div class="center-div">
+            <h3 class="text-5xl font-semibold text-center">
+                Please place your finger to the fingerprint sensor.
+            </h3>
+            
+            <div class="mt-10">
+                <h2 class="font-bold text-2xl text-center">place it once then place it again after 2 seconds.</h2>
+                <h2 class="font-bold text-2xl text-center mt-5">@Status</h2>
+            </div>
+        </div>
+    </DialogContent>
+    <DialogActions>
+        <button @onclick="CloseDialog" class="rounded-md border border-slate-300 px-20 py-5 me-3 text-center text-3xl transition-all shadow-sm hover:shadow-lg text-slate-600 hover:text-white hover:bg-slate-800 hover:border-slate-800 focus:text-white focus:bg-slate-800 focus:border-slate-800 active:border-slate-800 active:text-white active:bg-slate-800 disabled:pointer-events-none disabled:opacity-50 disabled:shadow-none" type="button">
+            Cancel
+        </button>
+        <button @onclick="Proceed" type="button" class="proceed-button">
+            Proceed
+        </button>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] public IMudDialogInstance? Dialog { get; set; }
+    [Parameter] public EventCallback<int> OnClose { get; set; }
+    [Parameter] public string SlotNumber { get; set; } = "";
+
+    private string Status { get; set; } = "";
+
+    private int FingerprintId { get; set; } = -1;
+
+    // protected override async Task OnInitializedAsync()
+    // {
+    //     await CheckIfStillActive();
+    // }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Enroll();
+    }
+
+    private void CloseDialog()
+    {
+        Dialog.Close(DialogResult.Ok(true));
+        // navigationManager.NavigateTo("/", true, true);
+    }
+
+    private async Task Proceed()
+    {
+        Dialog.Close(DialogResult.Ok(true));
+        await OnClose.InvokeAsync(FingerprintId);
+    }
+
+    private async Task CheckIfStillActive()
+    {
+        var result = await FingerprintService.CheckIfStillActive(SlotNumber);
+        if (result.Success)
+        {
+            Status = result.Data ? "" : "This slot still has its owner's device";
+        }
+    }
+
+    private async Task Enroll()
+    {
+        if (string.IsNullOrEmpty(SlotNumber))
+        {
+            return;
+        }
+
+        var result = await FingerprintService.EnrollAsync(SlotNumber);
+        if (result is {Success:true})
+        {
+            FingerprintId = result.Data;
+            await OnClose.InvokeAsync(result.Data);
+            Dialog.Close();
+        }
+        else
+        {
+            Status = result.ErrorMessage;
+        }
+    }
+}

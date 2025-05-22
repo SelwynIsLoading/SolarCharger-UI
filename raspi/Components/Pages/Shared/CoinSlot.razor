@@ -1,0 +1,93 @@
+﻿@using raspi.Services
+@inject CoinSlotService CoinSlotService
+<MudDialog>
+    <DialogContent>
+        <div class="center-div">
+            <h3 class="text-7xl font-semibold text-center">
+                Insert the required coins into the coin slot to begin charging.
+            </h3>
+            
+            <div class="mt-10">
+                <h2 class="font-bold text-8xl">Total amount inserted:</h2>
+                <p class="text-6xl font-semibold text-center">@coinTotal</p>
+            </div>
+            
+            @if (!CoinInserting)
+            {
+                <div class="mt-10">
+                    <button @onclick="GetCoinPulses" type="button" class="proceed-button">Insert another coin</button>
+                </div>
+            }
+        </div>
+    </DialogContent>
+    <DialogActions>
+        <button @onclick="CloseDialog" class="rounded-md border border-slate-300 px-20 py-5 me-3 text-center text-3xl transition-all shadow-sm hover:shadow-lg text-slate-600 hover:text-white hover:bg-slate-800 hover:border-slate-800 focus:text-white focus:bg-slate-800 focus:border-slate-800 active:border-slate-800 active:text-white active:bg-slate-800 disabled:pointer-events-none disabled:opacity-50 disabled:shadow-none" type="button">
+            Cancel
+        </button>
+        <button @onclick="Proceed" type="button" class="proceed-button">
+            Proceed
+        </button>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] public IMudDialogInstance? Dialog { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public EventCallback<int> OnCoinCallback { get; set; }
+    
+    private int coinTotal = 0;
+    private bool CoinInserting;
+    
+    private static readonly Dictionary<int, int> _pulseToSeconds = new()
+    {
+        { 1, 90 },
+        { 5, 1200 },
+        { 10, 1800 },
+        { 20, 2400 }
+    };
+    
+    // protected override async Task OnInitializedAsync()
+    // {
+    //     await GetCoinPulses();
+    // }
+    private static int GetSeconds(int pulses)
+    {
+        return _pulseToSeconds.TryGetValue(pulses, out int seconds)
+            ? seconds
+            : 0;
+    }
+
+    // protected override void OnInitialized()
+    // {
+    //     coinSlot.CoinsUpdated += UpdateCoins;
+    // }
+
+
+    private async Task GetCoinPulses()
+    {
+        CoinInserting = true;
+        StateHasChanged();
+        var result = await CoinSlotService.GetCoinPulse();
+        if (result.Success)
+        {
+            int seconds = GetSeconds(result.Data);
+            coinTotal += seconds;
+        }
+        CoinInserting = false;
+        StateHasChanged();
+    }
+
+    private async Task CloseDialog()
+    {
+        Dialog.Close(DialogResult.Ok(true));
+        // await OnClose.InvokeAsync();
+    }
+
+    private async Task Proceed()
+    {
+        Dialog.Close();
+        await OnCoinCallback.InvokeAsync(coinTotal);
+        await OnClose.InvokeAsync();
+    }
+    
+}

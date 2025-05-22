@@ -1,0 +1,21 @@
+﻿@using raspi.Components.Pages.Shared
+@inherits LayoutComponentBase
+
+@* Required *@
+<MudThemeProvider />
+<MudPopoverProvider />
+
+@* Needed for dialogs *@
+<MudDialogProvider />
+
+@* Needed for snackbars *@
+<MudSnackbarProvider />
+
+<div class="page">
+    <main class="bg-background">
+        <article class="content px-4">
+            @Body
+            <HomeNavigation />
+        </article>
+    </main>
+</div>

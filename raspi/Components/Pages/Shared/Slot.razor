@@ -1,0 +1,107 @@
+﻿@using raspi.Services
+@inject CountdownManager CountdownManager
+
+<div @onclick="OpenDialog" class="bg-blue-600 px-48 py-5 text-center rounded-lg">
+    <h3 class="font-bold text-white text-3xl">Slot @SlotNumber</h3>
+    @if ( Countdown.IsRunning() && Countdown.RemainingSeconds != 0 )
+    {
+        <p class="text-white text-2xl">@Countdown.GetFormattedTime()</p>
+    }
+    else
+    {
+        @if (SlotNumber == 1 || SlotNumber == 4 || SlotNumber == 7)
+        {
+            <p class="text-white text-2xl">No Locker</p>
+        }
+        else
+        {
+            <p class="text-white text-2xl">Locker</p>
+        }
+    }
+</div>
+
+@code {
+    [Parameter] public int SlotNumber { get; set; }
+    
+    private CountdownService Countdown = new();
+
+    private int? FingerprintId { get; set; } = null;
+    
+    private int TimeSeconds { get; set; }
+
+    DialogOptions options = new()
+    {
+        FullWidth = true,
+        CloseButton = false,
+        Position = DialogPosition.Center,
+        FullScreen = true
+    };
+
+    protected override void OnInitialized()
+    {
+        Countdown = CountdownManager.GetOrCreate(SlotNumber.ToString());
+        Countdown.OnCountdownUpdated += UpdateUI;
+    }
+    
+    private void UpdateUI() => InvokeAsync(StateHasChanged);
+
+    private Task ShowFingerprintDialog()
+    {
+        var parameters = new DialogParameters<Fingerprint>
+        {
+            { x => x.OnClose, EventCallback.Factory.Create<int>(this, OnFingerprintClosed) },
+            {x => x.SlotNumber, SlotNumber.ToString()}
+        };
+
+        return DialogService.ShowAsync<Fingerprint>("", parameters, options);
+    }
+
+    private async Task OnFingerprintClosed(int fingerprintId)
+    {
+        FingerprintId = fingerprintId;
+        await ShowCoinSlotDialog();
+    }
+    
+    private Task ShowCoinSlotDialog()
+    {
+        var parameters = new DialogParameters<CoinSlot>
+        {
+            { x => x.OnClose, EventCallback.Factory.Create(this, OnCoinSlotClosed) },
+            {x => x.OnCoinCallback, EventCallback.Factory.Create<int>(this, SetCoin)}
+        };
+        
+        return DialogService.ShowAsync<CoinSlot>("", parameters, options);
+    }
+
+    private void SetCoin(int time)
+    {
+        TimeSeconds = time;
+    }
+
+    private Task OnCoinSlotClosed()
+    {
+        var parameters = new DialogParameters<EnsuredComponent>
+        {
+            { x => x.OnClose, EventCallback.Factory.Create(this, EnsuredClosed) },
+        };
+        return DialogService.ShowAsync<EnsuredComponent>("",parameters, options);
+    }
+
+    private void EnsuredClosed()
+    {
+        Countdown.Start(TimeSeconds);
+        StateHasChanged();
+    }
+
+    private async Task OpenDialog()
+    {
+        if (SlotNumber == 1 || SlotNumber == 4 || SlotNumber == 7)
+        {
+            await ShowCoinSlotDialog();
+        }
+        else
+        {
+            await ShowFingerprintDialog();
+        }
+    }
+}

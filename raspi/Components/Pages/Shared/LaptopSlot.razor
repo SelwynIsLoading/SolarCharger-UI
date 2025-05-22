@@ -1,0 +1,39 @@
+﻿<div @onclick="@(() => ShowCoinSlotDialog($"L{SlotNumber}"))" class="bg-blue-600 px-48 py-5 text-center rounded-lg">
+    <h3 class="font-bold text-white text-3xl">Slot @SlotNumber</h3>
+    <p class="text-white text-2xl">Locker</p>
+</div>
+
+@code {
+    [Parameter] public int SlotNumber { get; set; }
+    
+    private Task ShowCoinSlotDialog(string slotNumber)
+    {
+        var options = new DialogOptions
+        {
+            FullWidth = true,
+            CloseButton = false,
+            Position = DialogPosition.Center,
+            FullScreen = true
+        };
+
+        var parameters = new DialogParameters<CoinSlot>
+        {
+            { x => x.OnClose, EventCallback.Factory.Create(this, OnCoinSlotClosed) },
+        };
+        
+        return DialogService.ShowAsync<CoinSlot>(slotNumber, parameters, options);
+    }
+
+    private Task OnCoinSlotClosed()
+    {
+        var options = new DialogOptions
+        {
+            FullWidth = true,
+            CloseButton = false,
+            Position = DialogPosition.Center,
+            FullScreen = true
+        };
+
+        return DialogService.ShowAsync<EnsuredComponent>("", options);
+    }
+}

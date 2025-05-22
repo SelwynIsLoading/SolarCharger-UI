@@ -1,0 +1,26 @@
+﻿<MudDialog>
+    <DialogContent>
+        <div class="center-div">
+            <h3 class="text-7xl font-semibold text-center">
+                Please ensure your device is connected to the slot you selected.
+                Plug your phone or laptop into the correct charging port before proceeding.
+            </h3>
+        </div>
+    </DialogContent>
+    <DialogActions>
+        <button @onclick="CloseDialog" type="button" class="proceed-button">
+            Done
+        </button>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] public IMudDialogInstance? Dialog { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+    
+    private async Task CloseDialog()
+    {
+        await OnClose.InvokeAsync();
+        Dialog.Close(DialogResult.Ok(true));
+    }
+}
