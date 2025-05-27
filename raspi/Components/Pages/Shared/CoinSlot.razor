@@ -1,4 +1,7 @@
-﻿@using raspi.Services
+﻿@using System.Text.Json
+@using Microsoft.AspNetCore.SignalR.Client
+@using raspi.DTOs
+@using raspi.Services
 @inject CoinSlotService CoinSlotService
 <MudDialog>
     <DialogContent>
@@ -8,16 +11,19 @@
             </h3>
             
             <div class="mt-10">
-                <h2 class="font-bold text-8xl">Total amount inserted:</h2>
+                <h2 class="font-bold text-4xl">Total amount inserted:</h2>
                 <p class="text-6xl font-semibold text-center">@coinTotal</p>
+                <p class="text-xs font-semibold text-center">
+                    Total charging time: <span class="font-bold text-lg">@(TimeSpan.FromSeconds(timeTotal).ToString(@"hh\:mm\:ss"))</span>
+                </p>
             </div>
             
-            @if (!CoinInserting)
-            {
-                <div class="mt-10">
-                    <button @onclick="GetCoinPulses" type="button" class="proceed-button">Insert another coin</button>
-                </div>
-            }
+            @* @if (!CoinInserting) *@
+            @* { *@
+            @*     <div class="mt-10"> *@
+            @*         <button @onclick="GetCoinPulses" type="button" class="proceed-button">Insert another coin</button> *@
+            @*     </div> *@
+            @* } *@
         </div>
     </DialogContent>
     <DialogActions>
@@ -34,9 +40,10 @@
     [CascadingParameter] public IMudDialogInstance? Dialog { get; set; }
     [Parameter] public EventCallback OnClose { get; set; }
     [Parameter] public EventCallback<int> OnCoinCallback { get; set; }
+    private bool CoinInserting;
     
     private int coinTotal = 0;
-    private bool CoinInserting;
+    private int timeTotal = 0;
     
     private static readonly Dictionary<int, int> _pulseToSeconds = new()
     {
@@ -45,6 +52,11 @@
         { 10, 1800 },
         { 20, 2400 }
     };
+    
+    private HubConnection? _hubConnection;
+    private string coinMessage = "Waiting for coin...";
+
+    private string status = "";
     
     // protected override async Task OnInitializedAsync()
     // {
@@ -57,25 +69,56 @@
             : 0;
     }
 
+    protected override async Task OnInitializedAsync()
+    {
+        _hubConnection = new HubConnectionBuilder()
+            .WithUrl(navigationManager.ToAbsoluteUri("/coinhub"))
+            .Build();
+
+        _hubConnection.On<CoinInsertedDto>("CoinInserted", (dataObj) =>
+        {
+            InvokeAsync(() =>
+            {
+                // status = $"Coin inserted: +{dataObj.AddedSeconds}s at {dataObj.Timestamp} — Total: {dataObj.TotalSeconds}s";
+                // coinTotal = dataObj.TotalSeconds;
+                var seconds = GetSeconds(dataObj.Pulses);
+                timeTotal += seconds;
+                coinTotal += dataObj.Pulses;
+                StateHasChanged();
+            });
+
+        });
+
+        await _hubConnection.StartAsync();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_hubConnection is not null)
+        {
+            await _hubConnection.DisposeAsync();
+        }
+    }
+
     // protected override void OnInitialized()
     // {
     //     coinSlot.CoinsUpdated += UpdateCoins;
     // }
 
 
-    private async Task GetCoinPulses()
-    {
-        CoinInserting = true;
-        StateHasChanged();
-        var result = await CoinSlotService.GetCoinPulse();
-        if (result.Success)
-        {
-            int seconds = GetSeconds(result.Data);
-            coinTotal += seconds;
-        }
-        CoinInserting = false;
-        StateHasChanged();
-    }
+    // private async Task GetCoinPulses()
+    // {
+    //     CoinInserting = true;
+    //     StateHasChanged();
+    //     var result = await CoinSlotService.GetCoinPulse();
+    //     if (result.Success)
+    //     {
+    //         int seconds = GetSeconds(result.Data);
+    //         coinTotal += seconds;
+    //     }
+    //     CoinInserting = false;
+    //     StateHasChanged();
+    // }
 
     private async Task CloseDialog()
     {

@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using MudBlazor.Services;
 using raspi.Components;
 using raspi.Services;
+using raspi.Services.Models;
 
 namespace raspi;
 
@@ -16,6 +17,8 @@ public class Program
             .AddInteractiveServerComponents();
 
         builder.Services.AddMudServices();
+
+        builder.Services.AddControllers();
 
         // builder.Services.AddSingleton<CoinSlotService>();
         
@@ -37,6 +40,7 @@ public class Program
             client.BaseAddress = new Uri("http://localhost:8000");
         });
 
+        builder.Services.AddSignalR();
         var app = builder.Build();
 
         // Configure the HTTP request pipeline.
@@ -46,6 +50,10 @@ public class Program
             // The default HSTS value is 30 days. You may want to change this for production scenarios, see https://aka.ms/aspnetcore-hsts.
             app.UseHsts();
         }
+
+        app.MapControllers();
+        app.MapHub<CoinHub>("/coinhub");
+        app.MapHub<FingerprintHub>("/fingerprinthub");
 
         app.UseHttpsRedirection();
 
