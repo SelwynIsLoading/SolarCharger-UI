@@ -1,29 +1,51 @@
 ﻿@using Microsoft.AspNetCore.SignalR.Client
+@using raspi.Controllers
 @using raspi.Services
 @inject FingerprintService FingerprintService
+@inject NavigationManager navigationManager
+@implements IAsyncDisposable
+
 <MudDialog>
     <DialogContent>
-        <div class="center-div">
-            <h3 class="text-5xl font-semibold text-center">
-                Please place your finger to the fingerprint sensor.
-            </h3>
-            
-            <div class="mt-10">
-                <h2 class="font-bold text-2xl text-center">@enrollStatus</h2>
-                <h2 class="font-bold text-2xl text-center">place it once then place it again after 2 seconds.</h2>
-                <h2 class="font-bold text-2xl text-center mt-5">@eventType</h2>
-                <h2 class="font-bold text-2xl text-center mt-5">@userId</h2>
-                <h2 class="font-bold text-2xl text-center mt-5">@status</h2>
+        <div class="container py-5">
+            <div class="row justify-content-center">
+                <div class="col-12 text-center mb-5">
+                    <div class="card shadow-sm">
+                        <div class="card-body p-5">
+                            <h2 class="display-1 fw-bold text-primary mb-5">
+                                Fingerprint Verification
+                            </h2>
+                            
+                            <div class="fingerprint-icon mb-4">
+                                <i class="fas fa-fingerprint fa-6x text-primary"></i>
+                            </div>
+
+                            <p class="fs-1 text-muted mb-5" style="line-height: 1.5;">
+                                Please wait for the fingerprint sensor to light up, then place your fingerprint.
+                            </p>
+
+                            <div class="status-container p-4 bg-light rounded-3 mb-4">
+                                <h3 class="fs-2 text-primary mb-3">@enrollStatus</h3>
+                                <h3 class="fs-2 text-primary mb-3">@eventType</h3>
+                                <h3 class="fs-2 text-primary">@status</h3>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </DialogContent>
     <DialogActions>
-        <button @onclick="CloseDialog" class="rounded-md border border-slate-300 px-20 py-5 me-3 text-center text-3xl transition-all shadow-sm hover:shadow-lg text-slate-600 hover:text-white hover:bg-slate-800 hover:border-slate-800 focus:text-white focus:bg-slate-800 focus:border-slate-800 active:border-slate-800 active:text-white active:bg-slate-800 disabled:pointer-events-none disabled:opacity-50 disabled:shadow-none" type="button">
-            Cancel
-        </button>
-        <button @onclick="Proceed" type="button" class="proceed-button">
-            Proceed
-        </button>
+        <div class="d-flex justify-content-end gap-4">
+            <button @onclick="CloseDialog" 
+                    class="btn btn-outline-secondary btn-lg px-5 py-4 fs-2">
+                Cancel
+            </button>
+            @* <button @onclick="Proceed"  *@
+            @*         class="btn btn-primary btn-lg px-5 py-4 fs-2"> *@
+            @*     Proceed *@
+            @* </button> *@
+        </div>
     </DialogActions>
 </MudDialog>
 
@@ -31,42 +53,98 @@
     [CascadingParameter] public IMudDialogInstance? Dialog { get; set; }
     [Parameter] public EventCallback<int> OnClose { get; set; }
     [Parameter] public string SlotNumber { get; set; } = "";
+    [Parameter] public bool IsTimerRunning { get; set; }
+    [Parameter] public int UserIdMatch { get; set; }
+    [Parameter] public bool IsForVerification { get; set; }
 
     private string Status { get; set; } = "";
-
     private int FingerprintId { get; set; } = -1;
-    
     private HubConnection? _hubConnection;
     private string status = "Waiting...";
     private string eventType = "";
     private string userId = "";
-    
     private string enrollStatus = "";
+    private bool _isDisposed;
     
-    public class FullFingerprintEvent
-    {
-        public string EventType { get; set; } = string.Empty;
-        public string UserId { get; set; } = string.Empty;
-        public string Message { get; set; } = string.Empty;
-    }
-
     protected override async Task OnInitializedAsync()
     {
-        _hubConnection = new HubConnectionBuilder()
-            .WithUrl(navigationManager.ToAbsoluteUri("/fingerprinthub"))
-            .WithAutomaticReconnect()
-            .Build();
-
-        _hubConnection.On<FullFingerprintEvent>("FingerprintDetected", (data) =>
+        try
         {
-            eventType = data.EventType;
-            userId = data.UserId;
-            status = $"{data.EventType.ToUpper()}: {data.Message} (User: {data.UserId})";
-            InvokeAsync(StateHasChanged);
-        });
+            _hubConnection = new HubConnectionBuilder()
+                .WithUrl(navigationManager.ToAbsoluteUri("/fingerprinthub"))
+                .WithAutomaticReconnect()
+                .Build();
 
-        await _hubConnection.StartAsync();
-        await TriggerEnrollment();
+            _hubConnection.On<FingerprintController.FullFingerprintEvent>("FingerprintDetected", HandleFingerprintEvent);
+
+            await _hubConnection.StartAsync();
+            
+            if (!IsTimerRunning && !IsForVerification)
+            {
+                await TriggerEnrollment();
+            }
+            else
+            {
+                await TriggerVerification();
+            }
+        }
+        catch (Exception ex)
+        {
+            status = $"Error connecting to hub: {ex.Message}";
+            StateHasChanged();
+        }
+    }
+
+    private async Task HandleFingerprintEvent(FingerprintController.FullFingerprintEvent data)
+    {
+        if (_isDisposed) return;
+
+        try
+        {
+            if (data.UserId >= 0)
+            {
+                if (IsTimerRunning && data.EventType.ToUpper() == "VERIFY_MATCH")
+                {
+                    FingerprintId = data.UserId;
+                    if (UserIdMatch != FingerprintId)
+                    {
+                        Status = "Fingerprint does not match!";
+                        return;
+                    }
+                    await Proceed();
+                    return; // Exit early after proceeding
+                }
+
+                if (data.EventType.ToUpper() == "VERIFY_MATCH")
+                {
+                    FingerprintId = data.UserId;
+                    if (UserIdMatch != FingerprintId)
+                    {
+                        Status = "Fingerprint does not match!";
+                        return;
+                    }
+                    await Proceed();
+                    return; // Exit early after proceeding
+                }
+                if (!IsTimerRunning && data.EventType.ToUpper() == "ENROLL_SUCCESS")
+                {
+                    FingerprintId = data.UserId;
+                    await Proceed();
+                    return; // Exit early after proceeding
+                }
+            }
+            
+            // Only update UI if we haven't proceeded
+            eventType = data.EventType;
+            userId = data.UserId.ToString();
+            status = $"{data.EventType.ToUpper()}: {data.Message}";
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (Exception ex)
+        {
+            status = $"Error processing event: {ex.Message}";
+            await InvokeAsync(StateHasChanged);
+        }
     }
     
     private async Task TriggerEnrollment()
@@ -74,12 +152,11 @@
         try
         {
             using var http = new HttpClient();
-            var response = await http.PostAsync("http://192.168.1.58:8000/fingerprint/enroll", null);
+            var response = await http.PostAsync("http://localhost:8000/fingerprint/enroll", null);
 
-            if (response.IsSuccessStatusCode)
-                enrollStatus = "Enrollment process started.";
-            else
-                enrollStatus = $"Failed to start enrollment: {response.StatusCode}";
+            enrollStatus = response.IsSuccessStatusCode 
+                ? "Enrollment process started."
+                : $"Failed to start enrollment: {response.StatusCode}";
         }
         catch (Exception ex)
         {
@@ -87,26 +164,53 @@
         }
     }
 
-    // protected override async Task OnInitializedAsync()
-    // {
-    //     await CheckIfStillActive();
-    // }
+    private async Task TriggerVerification()
+    {
+        try
+        {
+            using var http = new HttpClient();
+            var response = await http.PostAsync("http://localhost:8000/fingerprint/verify", null);
 
-    // protected override async Task OnInitializedAsync()
-    // {
-    //     await Enroll();
-    // }
+            enrollStatus = response.IsSuccessStatusCode 
+                ? "Verification process started."
+                : $"Failed to start verification: {response.StatusCode}";
+        }
+        catch (Exception ex)
+        {
+            enrollStatus = $"Error: {ex.Message}";
+        }
+    }
 
     private void CloseDialog()
     {
-        Dialog.Close(DialogResult.Ok(true));
-        // navigationManager.NavigateTo("/", true, true);
+        Dialog?.Close(DialogResult.Cancel());
     }
 
     private async Task Proceed()
     {
-        Dialog.Close(DialogResult.Ok(true));
-        await OnClose.InvokeAsync(FingerprintId);
+        if (_isDisposed) return;
+
+        try
+        {
+            // Ensure we're on the UI thread
+            await InvokeAsync(() =>
+            {
+                // First close the dialog
+                Dialog?.Close(DialogResult.Ok(FingerprintId));
+            });
+            
+            // Then cleanup the connection
+            if (_hubConnection != null)
+            {
+                await _hubConnection.DisposeAsync();
+                _hubConnection = null;
+            }
+        }
+        catch (Exception ex)
+        {
+            status = $"Error in Proceed: {ex.Message}";
+            await InvokeAsync(StateHasChanged);
+        }
     }
 
     private async Task CheckIfStillActive()
@@ -118,23 +222,15 @@
         }
     }
 
-    // private async Task Enroll()
-    // {
-    //     if (string.IsNullOrEmpty(SlotNumber))
-    //     {
-    //         return;
-    //     }
-    //
-    //     var result = await FingerprintService.EnrollAsync(SlotNumber);
-    //     if (result is {Success:true})
-    //     {
-    //         FingerprintId = result.Data;
-    //         await OnClose.InvokeAsync(result.Data);
-    //         Dialog.Close();
-    //     }
-    //     else
-    //     {
-    //         Status = result.ErrorMessage;
-    //     }
-    // }
+    public async ValueTask DisposeAsync()
+    {
+        if (_isDisposed) return;
+        _isDisposed = true;
+
+        if (_hubConnection != null)
+        {
+            await _hubConnection.DisposeAsync();
+            _hubConnection = null;
+        }
+    }
 }

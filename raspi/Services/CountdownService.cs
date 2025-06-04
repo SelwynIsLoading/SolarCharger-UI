@@ -4,8 +4,16 @@ public class CountdownService
 {
     private Timer? _timer;
     private readonly object _lock = new();
+    private readonly ArduinoService _arduinoService;
     public int RemainingSeconds { get; private set; }
     public event Action? OnCountdownUpdated;
+    public string SlotNumber { get; set; } = string.Empty;
+
+    public CountdownService(ArduinoService arduinoService)
+    {
+        _arduinoService = arduinoService;
+    }
+
     public void Start(int secondsToAdd)
     {
         lock (_lock)
@@ -26,6 +34,7 @@ public class CountdownService
                         {
                             _timer?.Dispose();
                             _timer = null;
+                            _ = _arduinoService.SendCommand($"P-{SlotNumber}-StartCharging");
                         }
                     }
                 }, null, 1000, 1000);

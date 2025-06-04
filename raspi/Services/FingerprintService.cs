@@ -37,16 +37,16 @@ public class FingerprintService(ApplicationDbContext context, HttpClient client)
     {
         var response = await client.PostAsJsonAsync("/fingerprint/delete", new {id});
 
-        var model = await context.SlotFingerprints
-            .Where(w => w.FingerprintId == id && w.IsActive)
-            .OrderByDescending(ob => ob.Created)
-            .FirstOrDefaultAsync();
-        
-        if (model is null)
-            return ServiceResponse<bool>.FailureResult("Slot not found");
-
-        model.IsActive = false;
-        await context.SaveChangesAsync();
+        // var model = await context.SlotFingerprints
+        //     .Where(w => w.FingerprintId == id && w.IsActive)
+        //     .OrderByDescending(ob => ob.Created)
+        //     .FirstOrDefaultAsync();
+        //
+        // if (model is null)
+        //     return ServiceResponse<bool>.FailureResult("Slot not found");
+        //
+        // model.IsActive = false;
+        // await context.SaveChangesAsync();
         
         return response.IsSuccessStatusCode
             ? ServiceResponse<bool>.SuccessResult(true)

@@ -23,12 +23,11 @@ public class Program
         // builder.Services.AddSingleton<CoinSlotService>();
         
         builder.Services.AddSingleton<CountdownManager>();
-        
         builder.Services.AddScoped<CountdownService>();
+        builder.Services.AddScoped<DbService>();
   
         builder.Services.AddDbContext<ApplicationDbContext>(options => 
             options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
-        
         
         builder.Services.AddHttpClient<FingerprintService>(client =>
         {
@@ -36,6 +35,11 @@ public class Program
         });
         
         builder.Services.AddHttpClient<CoinSlotService>(client =>
+        {
+            client.BaseAddress = new Uri("http://localhost:8000");
+        });
+
+        builder.Services.AddHttpClient<ArduinoService>(client =>
         {
             client.BaseAddress = new Uri("http://localhost:8000");
         });

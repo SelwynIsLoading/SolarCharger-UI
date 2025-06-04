@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.SignalR;
@@ -24,17 +25,17 @@ namespace raspi.Controllers
 
         public class FingerprintData
         {
-            public string UserId { get; set; } = string.Empty;
+            public int Id { get; set; } 
             public string Message { get; set; } = string.Empty;
         }
         
         [HttpPost("detected")]
         public async Task<IActionResult> Post([FromBody] IncomingFingerprintPayload payload)
-        {
+         {
             var fullEvent = new FullFingerprintEvent
             {
                 EventType = payload.Event,
-                UserId = payload.Data.UserId,
+                UserId = payload.Data.Id,
                 Message = payload.Data.Message
             };
 
@@ -45,7 +46,7 @@ namespace raspi.Controllers
         public class FullFingerprintEvent
         {
             public string EventType { get; set; } = string.Empty;
-            public string UserId { get; set; } = string.Empty;
+            public int UserId { get; set; } 
             public string Message { get; set; } = string.Empty;
         }
     }

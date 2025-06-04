@@ -23,6 +23,6 @@ public class ApplicationDbContext : DbContext
                 entityEntry.Entity.Created = DateTime.UtcNow;
             }
         }
-        return await SaveChangesAsync(cancellationToken);
+        return await base.SaveChangesAsync(cancellationToken);
     }
 }

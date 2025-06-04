@@ -1,0 +1,162 @@
+﻿@page "/inventory"
+@using MudBlazor
+@using raspi.Services
+@inject ISnackbar Snackbar
+@inject DbService DbService
+
+<div class="container-fluid">
+    <div class="row mb-4">
+        <div class="col">
+            <h2 class="mb-4">Inventory Management</h2>
+        </div>
+    </div>
+
+    <div class="row mb-4">
+        <div class="col">
+            <MudButtonGroup Variant="Variant.Filled" Color="Color.Primary" Size="Size.Large">
+                <MudButton OnClick="@(() => SetTimeFrame(DbService.TimeFrame.Daily))" 
+                          Color="@(SelectedTimeFrame == DbService.TimeFrame.Daily ? Color.Primary : Color.Default)">
+                    Daily
+                </MudButton>
+                <MudButton OnClick="@(() => SetTimeFrame(DbService.TimeFrame.Weekly))"
+                          Color="@(SelectedTimeFrame == DbService.TimeFrame.Weekly ? Color.Primary : Color.Default)">
+                    Weekly
+                </MudButton>
+                <MudButton OnClick="@(() => SetTimeFrame(DbService.TimeFrame.Monthly))"
+                          Color="@(SelectedTimeFrame == DbService.TimeFrame.Monthly ? Color.Primary : Color.Default)">
+                    Monthly
+                </MudButton>
+            </MudButtonGroup>
+        </div>
+    </div>
+
+    <div class="row mb-4">
+        <div class="col-md-4">
+            <MudCard>
+                <MudCardContent>
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h5 class="text-muted mb-2">Total Sales</h5>
+                            <h2>@TotalSales.ToString("C")</h2>
+                        </div>
+                        <MudIcon Icon="@Icons.Material.Filled.AttachMoney" Color="Color.Primary" Size="Size.Large" />
+                    </div>
+                </MudCardContent>
+            </MudCard>
+        </div>
+        <div class="col-md-4">
+            <MudCard>
+                <MudCardContent>
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h5 class="text-muted mb-2">Items Sold</h5>
+                            <h2>@ItemsSold</h2>
+                        </div>
+                        <MudIcon Icon="@Icons.Material.Filled.ShoppingCart" Color="Color.Success" Size="Size.Large" />
+                    </div>
+                </MudCardContent>
+            </MudCard>
+        </div>
+        <div class="col-md-4">
+            <MudCard>
+                <MudCardContent>
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h5 class="text-muted mb-2">Average Sale</h5>
+                            <h2>@AverageSale.ToString("C")</h2>
+                        </div>
+                        <MudIcon Icon="@Icons.Material.Filled.TrendingUp" Color="Color.Info" Size="Size.Large" />
+                    </div>
+                </MudCardContent>
+            </MudCard>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col">
+            <MudCard>
+                <MudCardContent>
+                    <MudTable Items="@InventoryItems" Dense="false" Hover="true" Bordered="true" Striped="true"
+                             Filter="new Func<InventoryItem,bool>(FilterFunc)" FilterCaseSensitivity="DataGridFilterCaseSensitivity.CaseInsensitive"
+                             Class="mud-table-large">
+                        <HeaderContent>
+                            <MudTh><MudTableSortLabel SortBy="new Func<InventoryItem, object>(x=>x.Slot)">Slot</MudTableSortLabel></MudTh>
+                            <MudTh><MudTableSortLabel SortBy="new Func<InventoryItem, object>(x=>x.Date)">Date</MudTableSortLabel></MudTh>
+                            <MudTh><MudTableSortLabel SortBy="new Func<InventoryItem, object>(x=>x.Price)">Price</MudTableSortLabel></MudTh>
+                        </HeaderContent>
+                        <RowTemplate>
+                            <MudTd DataLabel="Slot" Style="font-size: 1.1rem;">@context.Slot</MudTd>
+                            <MudTd DataLabel="Date" Style="font-size: 1.1rem;">@context.Date.ToShortDateString()</MudTd>
+                            <MudTd DataLabel="Price" Style="font-size: 1.1rem;">@context.Price.ToString("C")</MudTd>
+                        </RowTemplate>
+                        <PagerContent>
+                            <MudTablePager RowsPerPageString="Items per page:" />
+                        </PagerContent>
+                    </MudTable>
+                </MudCardContent>
+            </MudCard>
+        </div>
+    </div>
+</div>
+
+@code {
+    private List<InventoryItem> InventoryItems { get; set; } = new();
+    private DbService.TimeFrame SelectedTimeFrame { get; set; } = DbService.TimeFrame.Daily;
+    private decimal TotalSales { get; set; }
+    private int ItemsSold { get; set; }
+    private decimal AverageSale { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+    }
+
+    private async Task SetTimeFrame(DbService.TimeFrame timeFrame)
+    {
+        SelectedTimeFrame = timeFrame;
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        var response = await DbService.GetReport(SelectedTimeFrame);
+        if (response.Success && response.Data != null)
+        {
+            InventoryItems = response.Data.Select(s => new InventoryItem
+            {
+                Slot = s.SlotNumber,
+                Date = s.Created,
+                Price = s.CoinTotal
+            }).ToList();
+
+            CalculateStatistics();
+        }
+        else
+        {
+            Snackbar.Add("Failed to load inventory data", Severity.Error);
+        }
+    }
+
+    private void CalculateStatistics()
+    {
+        TotalSales = InventoryItems.Sum(item => item.Price);
+        ItemsSold = InventoryItems.Count;
+        AverageSale = ItemsSold > 0 ? TotalSales / ItemsSold : 0;
+    }
+
+    private bool FilterFunc(InventoryItem item)
+    {
+        if (string.IsNullOrWhiteSpace(_searchString))
+            return true;
+        return item.Slot.Contains(_searchString, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private string _searchString = "";
+
+    public class InventoryItem
+    {
+        public string Slot { get; set; } = "";
+        public DateTime Date { get; set; }
+        public decimal Price { get; set; }
+    }
+}
