@@ -1,18 +1,64 @@
-﻿<MudDialog>
+﻿@using raspi.Services
+
+<MudDialog>
     <DialogContent>
-        <div class="center-div">
-            <h3 class="text-7xl font-semibold text-center">
-                Please ensure your device is connected to the slot you selected.
-                Plug your phone or laptop into the correct charging port before proceeding.
-            </h3>
+        <div class="container py-5">
+            <div class="row justify-content-center">
+                <div class="col-12 text-center mb-5">
+                    <div class="card shadow-sm">
+                        <div class="card-body text-center p-5">
+                            <h2 class="display-1 fw-bold text-primary mb-5">
+                                Device Connection Check
+                            </h2>
+                            <p class="fs-1 text-muted mb-0" style="line-height: 1.5;">
+                                Please ensure your device is connected to the slot you selected.
+                                Plug your phone or laptop into the correct charging port before proceeding.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
     </DialogContent>
     <DialogActions>
-        <button @onclick="CloseDialog" type="button" class="proceed-button">
-            Done
-        </button>
+        <div class="d-flex justify-content-center w-100">
+            <button @onclick="CloseDialog" 
+                    class="btn btn-primary btn-lg px-5 py-4 fs-1">
+                Done
+            </button>
+        </div>
     </DialogActions>
 </MudDialog>
+
+<style>
+    .btn {
+        transition: all 0.3s ease;
+        min-width: 300px;
+    }
+
+    .btn:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    }
+
+    .card {
+        transition: all 0.3s ease;
+        border: none;
+    }
+
+    .card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1) !important;
+    }
+
+    :deep(.mud-dialog-content) {
+        padding: 3rem !important;
+    }
+
+    :deep(.mud-dialog) {
+        max-width: 95vw !important;
+    }
+</style>
 
 @code {
     [CascadingParameter] public IMudDialogInstance? Dialog { get; set; }

@@ -1,35 +1,65 @@
 ﻿@using raspi.Services
 @inject CountdownManager CountdownManager
+@inject DbService DbService
+@inject FingerprintService FingerprintService
+@implements IDisposable
+@inject ArduinoService ArduinoService
 
-<div @onclick="OpenDialog" class="bg-blue-600 px-48 py-5 text-center rounded-lg">
-    <h3 class="font-bold text-white text-3xl">Slot @SlotNumber</h3>
-    @if ( Countdown.IsRunning() && Countdown.RemainingSeconds != 0 )
+<div @onclick="OpenDialog" class="slot-card w-100 h-100 d-flex flex-column justify-content-center align-items-center p-4 rounded-3 cursor-pointer">
+    <h3 class="slot-number mb-3">Slot @SlotNumber</h3>
+    @if (CountDownRunning)
     {
-        <p class="text-white text-2xl">@Countdown.GetFormattedTime()</p>
+        <div class="countdown-timer">
+            <p class="mb-0">@Countdown.GetFormattedTime()</p>
+        </div>
     }
     else
     {
-        @if (SlotNumber == 1 || SlotNumber == 4 || SlotNumber == 7)
-        {
-            <p class="text-white text-2xl">No Locker</p>
-        }
-        else
-        {
-            <p class="text-white text-2xl">Locker</p>
-        }
+        <p class="mb-0">@(IsNoLockerSlot ? "No Locker" : "Locker")</p>
     }
 </div>
+
+<style>
+    .slot-card {
+        background: linear-gradient(145deg, #0d6efd, #0a58ca);
+        color: white;
+        transition: all 0.3s ease;
+        cursor: pointer;
+        border: none;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+
+    .slot-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 8px 15px rgba(0, 0, 0, 0.2);
+    }
+
+    .slot-number {
+        font-size: 1.5rem;
+        font-weight: 600;
+    }
+
+    .countdown-timer {
+        font-size: 1.25rem;
+        font-weight: 500;
+    }
+
+    .cursor-pointer {
+        cursor: pointer;
+    }
+</style>
 
 @code {
     [Parameter] public int SlotNumber { get; set; }
     
-    private CountdownService Countdown = new();
-
-    private int? FingerprintId { get; set; } = null;
-    
+    private CountdownService Countdown { get; set; } = null!;
+    private int FingerprintId { get; set; } = -1;
     private int TimeSeconds { get; set; }
+    private int CoinTotal { get; set; }
+    private bool CountDownRunning => Countdown.IsRunning() && Countdown.RemainingSeconds != 0;
+    private bool IsNoLockerSlot => SlotNumber == 1 || SlotNumber == 4 || SlotNumber == 7;
 
-    DialogOptions options = new()
+    private readonly DialogOptions _dialogOptions = new()
     {
         FullWidth = true,
         CloseButton = false,
@@ -39,63 +69,131 @@
 
     protected override void OnInitialized()
     {
-        Countdown = CountdownManager.GetOrCreate(SlotNumber.ToString());
+        Countdown = CountdownManager.GetOrCreate($"P-{SlotNumber}");
         Countdown.OnCountdownUpdated += UpdateUI;
     }
-    
-    private void UpdateUI() => InvokeAsync(StateHasChanged);
 
-    private Task ShowFingerprintDialog()
+    public void Dispose()
+    {
+        Countdown.OnCountdownUpdated -= UpdateUI;
+    }
+    
+    private async void UpdateUI()
+    {
+        if (!CountDownRunning)
+        {
+            // Stop charging when countdown finishes
+            await ArduinoService.SendCommand($"P-{SlotNumber}-StopCharging");
+            // FingerprintId = -1;
+            // await UpdateDatabaseAsync();
+        }
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task UpdateDatabaseAsync()
+    {
+        await DbService.MarkAsInActiveAsync($"P-{SlotNumber}");
+    }
+
+    private async Task ShowFingerprintDialog()
     {
         var parameters = new DialogParameters<Fingerprint>
         {
-            { x => x.OnClose, EventCallback.Factory.Create<int>(this, OnFingerprintClosed) },
-            {x => x.SlotNumber, SlotNumber.ToString()}
+            {x => x.SlotNumber, SlotNumber.ToString()},
+            {x => x.IsTimerRunning, CountDownRunning},
+            {x => x.UserIdMatch, FingerprintId}
         };
 
-        return DialogService.ShowAsync<Fingerprint>("", parameters, options);
-    }
-
-    private async Task OnFingerprintClosed(int fingerprintId)
-    {
-        FingerprintId = fingerprintId;
-        await ShowCoinSlotDialog();
+        var dialog = await DialogService.ShowAsync<Fingerprint>("", parameters, _dialogOptions);
+        var result = await dialog.Result;
+        
+        if (result is { Canceled: false, Data: int fingerprintId })
+        {
+            FingerprintId = fingerprintId;
+            if (FingerprintId != -1)
+            {
+                await ShowCoinSlotDialog();
+            }
+        }
     }
     
-    private Task ShowCoinSlotDialog()
+    private async Task ShowCoinSlotDialog()
     {
         var parameters = new DialogParameters<CoinSlot>
         {
             { x => x.OnClose, EventCallback.Factory.Create(this, OnCoinSlotClosed) },
-            {x => x.OnCoinCallback, EventCallback.Factory.Create<int>(this, SetCoin)}
+            {x => x.OnTimeCallback, EventCallback.Factory.Create<int>(this, SetTime)},
+            {x => x.OnCoinCallback, EventCallback.Factory.Create<int>(this, SetTotalCoins)}
         };
         
-        return DialogService.ShowAsync<CoinSlot>("", parameters, options);
+        await DialogService.ShowAsync<CoinSlot>("", parameters, _dialogOptions);
     }
 
-    private void SetCoin(int time)
-    {
-        TimeSeconds = time;
-    }
+    private void SetTime(int time) => TimeSeconds = time;
+    private void SetTotalCoins(int total) => CoinTotal = total;
 
-    private Task OnCoinSlotClosed()
+    private async Task OnCoinSlotClosed()
     {
         var parameters = new DialogParameters<EnsuredComponent>
         {
-            { x => x.OnClose, EventCallback.Factory.Create(this, EnsuredClosed) },
+            { x => x.OnClose, EventCallback.Factory.Create(this, EnsuredClosed) }
         };
-        return DialogService.ShowAsync<EnsuredComponent>("",parameters, options);
+        await DialogService.ShowAsync<EnsuredComponent>("", parameters, _dialogOptions);
     }
 
-    private void EnsuredClosed()
+    private async Task OnChargingFinished()
     {
-        Countdown.Start(TimeSeconds);
-        StateHasChanged();
+        var dialog = await DialogService.ShowAsync<ChargingFinished>("", _dialogOptions);
+        var result = await dialog.Result;
+        if (result != null && !result.Canceled)
+        {
+            var parameters = new DialogParameters<Fingerprint>
+            {
+                {x => x.SlotNumber, SlotNumber.ToString()},
+                {x => x.IsTimerRunning, CountDownRunning},
+                {x => x.UserIdMatch, FingerprintId},
+                {x => x.IsForVerification, true}
+            };
+
+            var fingerprintDialog = await DialogService.ShowAsync<Fingerprint>("", parameters, _dialogOptions);
+            var fingerprintResult = await fingerprintDialog.Result;
+        
+            if (fingerprintResult is { Canceled: false, Data: int fingerprintId })
+            {
+                FingerprintId = fingerprintId;
+                if (FingerprintId != -1)
+                {
+                    await FingerprintService.DeleteFingerprint(FingerprintId);
+                    await DbService.MarkAsInActiveAsync($"L-{SlotNumber}");
+                    FingerprintId = -1;
+                    // open slot
+                    await ArduinoService.SendCommand($"P-{SlotNumber}-Open-Door");
+                }
+            }
+        }
+            
+    }
+
+    private async Task EnsuredClosed()
+    {
+        var result = await DbService.AddCoin($"P-{SlotNumber}", CoinTotal, FingerprintId);
+        if(result.Success)
+        {
+            Console.WriteLine($"slot {SlotNumber} has been saved to db");
+            Countdown.Start(TimeSeconds);
+            await ArduinoService.SendCommand($"P-{SlotNumber}-StartCharging");
+            StateHasChanged();
+        }
     }
 
     private async Task OpenDialog()
     {
-        if (SlotNumber == 1 || SlotNumber == 4 || SlotNumber == 7)
+        if (FingerprintId != -1 && !CountDownRunning)
+        {
+            await OnChargingFinished();
+            return;
+        }
+        if (IsNoLockerSlot)
         {
             await ShowCoinSlotDialog();
         }

@@ -1,0 +1,27 @@
+﻿.btn {
+    transition: all 0.3s ease;
+    min-width: 200px;
+}
+
+.btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+.card {
+    transition: all 0.3s ease;
+    border: none;
+}
+
+.card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1) !important;
+}
+
+::deep(.mud-dialog-content) {
+    padding: 2rem !important;
+}
+
+::deep(.mud-dialog) {
+    max-width: 90vw !important;
+}
